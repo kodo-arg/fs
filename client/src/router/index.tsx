@@ -32,7 +32,7 @@ export const router = createBrowserRouter([
     ],
   },
   {
-    path: "/auth/callback",
+    path: "auth/callback",
     element: <AuthCallback />,
   },
 ]);

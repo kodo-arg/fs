@@ -73,22 +73,51 @@ export const logout = async (req: Request, res: Response) => {
 };
 
 export const steamCallback = async (req: Request, res: Response) => {
-  const user = req.user as any;
+  try {
+    // Validar que existe el usuario
+    if (!req.user) {
+      console.error("❌ No hay usuario en req.user");
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_user`);
+    }
 
-  // Generar JWT
-  const token = jwt.sign(
-    {
-      id: user.id,
-      steamId: user.steamId,
-      roleId: user.roleId,
-    },
-    process.env.JWT_SECRET!,
-    { expiresIn: "7d" }
-  );
+    const user = req.user as any;
 
-  // Redirigir al frontend con el token
-  const frontendUrl = process.env.FRONTEND_URL;
-  res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+    // Validar que existe JWT_SECRET
+    if (!process.env.JWT_SECRET) {
+      console.error("❌ JWT_SECRET no está configurado");
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/login?error=config_error`
+      );
+    }
+
+    // Validar que el usuario tiene los datos necesarios
+    if (!user.id || !user.steamId) {
+      console.error("❌ Usuario incompleto:", user);
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/login?error=invalid_user`
+      );
+    }
+
+    // Generar JWT
+    const token = jwt.sign(
+      {
+        id: user.id,
+        steamId: user.steamId,
+        roleId: user.roleId,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Redirigir al frontend con el token (NOTA: la barra inicial)
+    const frontendUrl = process.env.FRONTEND_URL;
+    const redirectUrl = `${frontendUrl}/auth/callback?token=${token}`;
+
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error("❌ Error en steamCallback:", error);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=server_error`);
+  }
 };
 
 export const validateToken = async (req: Request, res: Response) => {
