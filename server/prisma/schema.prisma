@@ -1,0 +1,166 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Definición de Enums para evitar errores de texto
+enum RolNombre {
+  ADMIN
+  JUGADOR
+  PREMIUM
+}
+
+enum EstadoTorneo {
+  ABIERTO
+  EN_CURSO
+  FINALIZADO
+  CANCELADO
+}
+
+enum FormatoTorneo {
+  UNO_VS_UNO
+  DOS_VS_DOS
+  TRES_VS_TRES
+  CINCO_VS_CINCO
+}
+
+enum EstadoPartida {
+  PROGRAMADA
+  EN_VIVO
+  FINALIZADA
+}
+
+enum EstadoInscripcion {
+  PENDIENTE
+  ACEPTADO
+  RECHAZADO
+}
+
+model Rol {
+  id       Int       @id @default(autoincrement())
+  nombre   RolNombre @default(JUGADOR) // Usamos el Enum
+  usuarios Usuario[]
+}
+
+model Usuario {
+  // Para que sea de 10 dígitos, ver nota abajo sobre el inicio del AUTO_INCREMENT
+  id            Int      @id @default(autoincrement())
+  steamId       String   @unique @map("steam_id") // @map mantiene la DB con guiones bajos pero tu código JS con camelCase
+  nombre        String
+  avatarUrl     String?  @map("avatar_url")
+  email         String?
+  fechaRegistro DateTime @default(now()) @map("created_at")
+
+  roleId Int @map("role_id")
+  rol    Rol @relation(fields: [roleId], references: [id])
+
+  // Relaciones
+  equiposMiembro   MiembroEquipo[]
+  equiposLiderados Equipo[]             @relation("CapitanEquipo") // Relación inversa para saber qué equipos creó
+  estadisticas     EstadisticaJugador[]
+  ranking          RankingGlobal?
+}
+
+model Equipo {
+  id        Int     @id @default(autoincrement())
+  nombre    String
+  logoUrl   String? @map("logo_url")
+  capitanId Int     @map("captain_id")
+
+  // Relaciones
+  capitan  Usuario              @relation("CapitanEquipo", fields: [capitanId], references: [id])
+  miembros MiembroEquipo[]
+  torneos  ParticipanteTorneo[]
+
+  // Relaciones de Partidas (Un equipo puede ser A, B o Ganador)
+  partidasComoA   Partida[] @relation("EquipoA")
+  partidasComoB   Partida[] @relation("EquipoB")
+  partidasGanadas Partida[] @relation("Ganador")
+}
+
+model MiembroEquipo {
+  equipoId     Int      @map("team_id")
+  usuarioId    Int      @map("user_id")
+  fechaIngreso DateTime @default(now()) @map("joined_at")
+
+  equipo  Equipo  @relation(fields: [equipoId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@id([equipoId, usuarioId]) // Llave compuesta
+}
+
+model Torneo {
+  id          Int           @id @default(autoincrement())
+  nombre      String
+  estado      EstadoTorneo  @default(ABIERTO)
+  formato     FormatoTorneo
+  fechaInicio DateTime      @map("start_date")
+  maxEquipos  Int           @map("max_teams")
+  premios     Float?        @map("prize_pool")
+
+  participantes ParticipanteTorneo[]
+  partidas      Partida[]
+}
+
+model ParticipanteTorneo {
+  torneoId Int               @map("tournament_id")
+  equipoId Int               @map("team_id")
+  estado   EstadoInscripcion @default(PENDIENTE)
+
+  torneo Torneo @relation(fields: [torneoId], references: [id])
+  equipo Equipo @relation(fields: [equipoId], references: [id])
+
+  @@id([torneoId, equipoId])
+}
+
+model Partida {
+  id        Int           @id @default(autoincrement())
+  torneoId  Int           @map("tournament_id")
+  equipoAId Int           @map("team_a_id")
+  equipoBId Int           @map("team_b_id")
+  scoreA    Int?          @default(0)
+  scoreB    Int?          @default(0)
+  ganadorId Int?          @map("winner_id")
+  mapa      String?       @map("map_name") // Ej: de_dust2
+  demoUrl   String?       @map("demo_url")
+  estado    EstadoPartida @default(PROGRAMADA)
+
+  // Relaciones
+  torneo       Torneo               @relation(fields: [torneoId], references: [id])
+  equipoA      Equipo               @relation("EquipoA", fields: [equipoAId], references: [id])
+  equipoB      Equipo               @relation("EquipoB", fields: [equipoBId], references: [id])
+  ganador      Equipo?              @relation("Ganador", fields: [ganadorId], references: [id]) // Ahora sabemos quién ganó relacionando la tabla
+  estadisticas EstadisticaJugador[]
+}
+
+model EstadisticaJugador {
+  id           Int    @id @default(autoincrement())
+  partidaId    Int    @map("match_id")
+  usuarioId    Int    @map("user_id")
+  asesinatos   Int    @map("kills") // Kills
+  muertes      Int    @map("deaths")
+  asistencias  Int    @map("assists")
+  hsPorcentaje Float? @map("hs_percent")
+
+  partida Partida @relation(fields: [partidaId], references: [id])
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+}
+
+model RankingGlobal {
+  usuarioId Int @id @map("user_id")
+  elo       Int @default(1000)
+  victorias Int @default(0)
+  derrotas  Int @default(0)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+}
